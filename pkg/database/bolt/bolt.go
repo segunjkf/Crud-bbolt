@@ -6,35 +6,31 @@ import (
 	"fmt"
 	"log"
 
-	bolt "go.etcd.io/bbolt"
-
 	"github.com/segunjkf/server/pkg/database"
+	bolt "go.etcd.io/bbolt"
 )
 
 // Bolt is the Bolt database.
-// It satisfies the Database Interface.
-type Bolt struct{
+// It satisfies the Database interface.
+type Bolt struct {
 	db *bolt.DB
 }
 
-const ( 
-	dbName = "text.db"
+const (
+	dbName     = "test.db"
 	bucketName = "users"
 )
 
-// New Return a new Bolt Implementation
+// New returns a new Bolt implementation.
 func New(ctx context.Context, directory string) (*Bolt, error) {
-	// Open the my.db data file in your current directory.
-	// It will be created if it doesn't exist.
 	db, err := bolt.Open(fmt.Sprintf("%s/%s", directory, dbName), 0600, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
-	// Ensure that the bucket exists.
-	err  = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(([]byte(bucketName)))
+	// Ensure that the bucket exists, if not create it.
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
 			return err
 		}
@@ -49,60 +45,92 @@ func New(ctx context.Context, directory string) (*Bolt, error) {
 	}, nil
 }
 
-// Close closes the database
-// Make sure to close the database
+type userinfo struct {
+	Email string `json:"email"`
+	Age   int    `json:"age"`
+}
+
+// Close closes the database.
+// Make sure to close the database once used.
 func (b *Bolt) Close(ctx context.Context) {
 	b.db.Close()
 }
 
-type userInfo struct {
-	Email string `json:"email"`
-	Age   int	 `json:"age"`
-}
-
+// Create implements the Database interface.
 func (b *Bolt) Create(ctx context.Context, user database.User) error {
-
-	v, err := json.Marshal(userInfo{
+	userinfo := userinfo{
 		Email: user.Email,
-		Age: user.Age,
-	})
+		Age:   user.Age,
+	}
+
+	v, err := json.Marshal(userinfo)
 	if err != nil {
 		return err
 	}
-
 	b.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		err := b.Put([]byte(user.Name), v)
 		return err
 	})
-	
 	return nil
 }
 
-//  Get implemetation of the Database interface
-func(b *Bolt) GetUser(ctx context.Context, name string) (user *database.User) {
-
+// Get implements the Database interface.
+func (b *Bolt) GetUser(ctx context.Context, name string) (user *database.User) {
 	var raw []byte
 	b.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		raw = b.Get([]byte(name))
-		fmt.Printf("The answer is: %s\n", raw)
 		return nil
 	})
 	if len(raw) == 0 {
-		return 
+		return
 	}
 	var u database.User
-
 	err := json.Unmarshal(raw, &u)
 	if err != nil {
 		log.Fatalf("Database corruption: %v", err)
 	}
 	user = &u
-	return 
+	return
 }
 
-// update implements the database interface
-func(b *Bolt) Update(ctx context.Context, name string) (database.User, error) {
-	return database.User{}, nil
+// Update implements the Database interface.
+func (b *Bolt) Update(ctx context.Context, user database.User) (*database.User, error) {
+	var raw []byte
+	b.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		raw = b.Get([]byte(user.Name))
+		return nil
+	})
+	var current database.User
+	err := json.Unmarshal(raw, &current)
+	if err != nil {
+		log.Fatalf("Database corruption: %v", err)
+	}
+	current.Age = user.Age
+	current.Email = user.Email
+	current.Name = user.Name
+
+	// Write back.
+	v, err := json.Marshal(current)
+	if err != nil {
+		panic(fmt.Sprintf("could not marshal user: %v", err))
+	}
+	err = b.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		err := b.Put([]byte(user.Name), v)
+		return err
+	})
+
+	return &current, nil
+}
+
+// Delete implements the Database interface.
+func (b *Bolt) Delete(ctx context.Context, name string) error {
+	return b.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		err := b.Delete([]byte(name))
+		return err
+	})
 }

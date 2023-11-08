@@ -32,7 +32,7 @@ func main() {
 	r.HandleFunc("/user/create", s.HandleCreateUsers)
 	r.HandleFunc("/user/{name}", s.HandleUsers)
 
-	// r.HandleFunc("/", s.HandleFuncHome)
+	r.HandleFunc("/", s.HandleFuncHome)
 	srv := &http.Server{
 		Addr:           Address,
 		Handler:        r,

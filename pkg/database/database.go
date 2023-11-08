@@ -11,8 +11,9 @@ type User struct {
 // Database represent the  operation that are done on the database.
 // This interface abstracts the underlying implemetation.
 type Database interface {
-	Create(ctx context.Context, data User) error
+	Create(ctx context.Context, user User) error
 	GetUser(ctx context.Context, name string) *User
 	// Update a a given user (if found) and returns the update user
-	Update(ctx context.Context, name string) (User, error)
+	Update(ctx context.Context, user User) (*User, error)
+	Delete(ctx context.Context, name string)  error
 }
